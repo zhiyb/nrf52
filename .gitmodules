@@ -1,0 +1,3 @@
+[submodule "nrf5_sdk"]
+	path = nrf5_sdk
+	url = https://github.com/zhiyb/nrf5_sdk.git
