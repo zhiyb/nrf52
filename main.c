@@ -129,7 +129,7 @@
 #define SEC_PARAM_MAX_KEY_SIZE              16                                         /**< Maximum encryption key size. */
 
 #define OUTPUT_REPORT_INDEX                 0                                          /**< Index of Output Report. */
-#define OUTPUT_REPORT_MAX_LEN               1                                          /**< Maximum length of Output Report. */
+#define OUTPUT_REPORT_MAX_LEN               2                                          /**< Maximum length of Output Report. */
 #define INPUT_REPORT_KEYS_INDEX             0                                          /**< Index of Input Report. */
 #define OUTPUT_REPORT_BIT_MASK_CAPS_LOCK    0x02                                       /**< CAPS LOCK bit in Output Report (based on 'LED Page (0x08)' of the Universal Serial Bus HID Usage Tables). */
 #define INPUT_REP_REF_ID                    0                                          /**< Id of reference to Keyboard Input Report. */
@@ -141,7 +141,7 @@
 
 #define BASE_USB_HID_SPEC_VERSION           0x0101                                     /**< Version number of base USB HID Specification implemented by this application. */
 
-#define INPUT_REPORT_KEYS_MAX_LEN           8                                          /**< Maximum length of the Input Report characteristic. */
+#define INPUT_REPORT_KEYS_MAX_LEN           9                                          /**< Maximum length of the Input Report characteristic. */
 
 #define DEAD_BEEF                           0xDEADBEEF                                 /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
@@ -152,8 +152,8 @@
 #define SCHED_QUEUE_SIZE                    10                                         /**< Maximum number of events in the scheduler queue. */
 #endif
 
-#define MODIFIER_KEY_POS                    0                                          /**< Position of the modifier byte in the Input Report. */
-#define SCAN_CODE_POS                       2                                          /**< The start position of the key scan code in a HID Report. */
+#define MODIFIER_KEY_POS                    1                                          /**< Position of the modifier byte in the Input Report. */
+#define SCAN_CODE_POS                       3                                          /**< The start position of the key scan code in a HID Report. */
 #define SHIFT_KEY_CODE                      0x02                                       /**< Key code indicating the press of the Shift Key. */
 
 #define MAX_KEYS_IN_ONE_REPORT              (INPUT_REPORT_KEYS_MAX_LEN - SCAN_CODE_POS)/**< Maximum number of key presses that can be sent in one Input Report. */
@@ -672,9 +672,45 @@ static void hids_init(void)
 
     static uint8_t report_map_data[] =
     {
+        // Vendor defined HID
+        0x06, 0x39, 0xff,	// Usage page (Vendor defined)
+        0x09, 0xff,		// Usage (Vendor usage)
+        0xa1, 0x01,		// Collection (Application)
+        0x85, 1,		//   Report ID
+        // IN size, cksum, channel
+        0x75, 8,		//   Report size (8)
+        0x95, 3,		//   Report count (3)
+        0x15, 0x00,		//   Logical minimum (0)
+        0x26, 0xff, 0x00,	//   Logical maximum (255)
+        0x09, 0xff,		//   Usage (Vendor usage)
+        0x81, 0x02,		//   Input (Data, Var, Abs)
+        // IN payload
+        0x75, 8,		//   Report size (8)
+        0x95, 32,		//   Report count (32)
+        0x15, 0x00,		//   Logical minimum (0)
+        0x26, 0xff, 0x00,	//   Logical maximum (255)
+        0x09, 0xff,		//   Usage (Vendor usage)
+        0x81, 0x02,		//   Input (Data, Var, Abs)
+        // OUT size, cksum, channel
+        0x75, 8,		//   Report size (8)
+        0x95, 3,		//   Report count (3)
+        0x15, 0x00,		//   Logical minimum (0)
+        0x26, 0xff, 0x00,	//   Logical maximum (255)
+        0x09, 0xff,		//   Usage (Vendor usage)
+        0x91, 0x02,		//   Output (Data, Var, Abs)
+        // OUT payload
+        0x75, 8,		//   Report size (8)
+        0x95, 32,		//   Report count (32)
+        0x15, 0x00,		//   Logical minimum (0)
+        0x26, 0xff, 0x00,	//   Logical maximum (255)
+        0x09, 0xff,		//   Usage (Vendor usage)
+        0x91, 0x02,		//   Output (Data, Var, Abs)
+        0xc0,			// End collection
+
         0x05, 0x01,       // Usage Page (Generic Desktop)
         0x09, 0x06,       // Usage (Keyboard)
         0xA1, 0x01,       // Collection (Application)
+        0x85, 2,		//   Report ID
         0x05, 0x07,       // Usage Page (Key Codes)
         0x19, 0xe0,       // Usage Minimum (224)
         0x29, 0xe7,       // Usage Maximum (231)
@@ -714,7 +750,7 @@ static void hids_init(void)
         0x95, 0x02,       // Report Size (8 bit)
         0xB1, 0x02,       // Feature (Data, Variable, Absolute)
 
-        0xC0              // End Collection (Application)
+        0xC0,             // End Collection (Application)
     };
 
     // Initialize HID Service
@@ -890,7 +926,7 @@ static uint32_t send_key_scan_press_release(ble_hids_t * p_hids,
 
     // HID Report Descriptor enumerates an array of size 6, the pattern hence shall not be any
     // longer than this.
-    STATIC_ASSERT((INPUT_REPORT_KEYS_MAX_LEN - 2) == 6);
+    STATIC_ASSERT((INPUT_REPORT_KEYS_MAX_LEN - SCAN_CODE_POS) == 6);
 
     ASSERT(pattern_len <= (INPUT_REPORT_KEYS_MAX_LEN - 2));
 
@@ -901,6 +937,7 @@ static uint32_t send_key_scan_press_release(ble_hids_t * p_hids,
     {
         // Reset the data buffer.
         memset(data, 0, sizeof(data));
+        data[0] = 2;
 
         // Copy the scan code.
         memcpy(data + SCAN_CODE_POS + offset, p_key_pattern + offset, data_len - offset);
@@ -1121,23 +1158,23 @@ static void on_hid_rep_char_write(ble_hids_evt_t * p_evt)
     if (p_evt->params.char_write.char_id.rep_type == BLE_HIDS_REP_TYPE_OUTPUT)
     {
         ret_code_t err_code;
-        uint8_t  report_val;
+        uint8_t  report_val[2];
         uint8_t  report_index = p_evt->params.char_write.char_id.rep_index;
 
         if (report_index == OUTPUT_REPORT_INDEX)
         {
             // This code assumes that the outptu report is one byte long. Hence the following
             // static assert is made.
-            STATIC_ASSERT(OUTPUT_REPORT_MAX_LEN == 1);
+            STATIC_ASSERT(OUTPUT_REPORT_MAX_LEN == 2);
 
             err_code = ble_hids_outp_rep_get(&m_hids,
                                              report_index,
                                              OUTPUT_REPORT_MAX_LEN,
                                              0,
-                                             &report_val);
+                                             report_val);
             APP_ERROR_CHECK(err_code);
 
-            if (!m_caps_on && ((report_val & OUTPUT_REPORT_BIT_MASK_CAPS_LOCK) != 0))
+            if (!m_caps_on && ((report_val[1] & OUTPUT_REPORT_BIT_MASK_CAPS_LOCK) != 0))
             {
                 // Caps Lock is turned On.
                 NRF_LOG_INFO("Caps Lock is turned On!");
@@ -1147,7 +1184,7 @@ static void on_hid_rep_char_write(ble_hids_evt_t * p_evt)
                 keys_send(sizeof(m_caps_on_key_scan_str), m_caps_on_key_scan_str);
                 m_caps_on = true;
             }
-            else if (m_caps_on && ((report_val & OUTPUT_REPORT_BIT_MASK_CAPS_LOCK) == 0))
+            else if (m_caps_on && ((report_val[1] & OUTPUT_REPORT_BIT_MASK_CAPS_LOCK) == 0))
             {
                 // Caps Lock is turned Off .
                 NRF_LOG_INFO("Caps Lock is turned Off!");
